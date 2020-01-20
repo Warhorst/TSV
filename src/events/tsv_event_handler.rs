@@ -3,6 +3,7 @@ use serenity::model::gateway::Ready;
 use serenity::prelude::*;
 
 use crate::events::command::Command;
+use crate::events::command_parse_result::CommandParseResult;
 use crate::events::command_parser::CommandParser;
 use crate::events::default_command_parser::DefaultCommandParser;
 use crate::events::messages::Messages;
@@ -25,15 +26,15 @@ impl TSVEventHandler {
 
 impl EventHandler for TSVEventHandler {
     fn message(&self, ctx: Context, msg: Message) {
-        let command_opt = &self.command_parser.parse(&mut msg.content.clone());
+        let command_parse_result = &self.command_parser.parse(&mut msg.content.clone());
 
-        match command_opt {
-            Some(command) => {
+        match command_parse_result {
+            CommandParseResult::Command(command, _) => {
                 match command {
                     Command::Unknown => self.unknown_command(ctx, msg)
                 }
             }
-            None => ()
+            CommandParseResult::NoCommand => ()
         }
     }
 
