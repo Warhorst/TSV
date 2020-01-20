@@ -5,6 +5,7 @@ use serenity::prelude::*;
 use crate::events::command::Command;
 use crate::events::command_parser::CommandParser;
 use crate::events::default_command_parser::DefaultCommandParser;
+use crate::events::messages::Messages;
 
 pub struct TSVEventHandler {
     command_parser: DefaultCommandParser
@@ -16,7 +17,7 @@ impl TSVEventHandler {
     }
 
     fn unknown_command(&self, ctx: Context, msg: Message) {
-        if let Err(why) = msg.channel_id.say(&ctx.http, "Unknown command!") {
+        if let Err(why) = msg.channel_id.say(&ctx.http, Messages::UnknownCommand.to_string()) {
             println!("Error sending message: {:?}", why);
         }
     }
@@ -37,6 +38,6 @@ impl EventHandler for TSVEventHandler {
     }
 
     fn ready(&self, _: Context, ready: Ready) {
-        println!("{} is connected!", ready.user.name);
+        println!("{}", Messages::BotConnected(ready.user.name).to_string());
     }
 }
