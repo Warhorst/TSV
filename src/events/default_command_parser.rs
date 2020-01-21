@@ -27,7 +27,7 @@ impl CommandParser for DefaultCommandParser {
                 args.push(String::from(p));
             }
 
-            let command = Command::from(args.remove(0));
+            let command = Command::from(args.remove(0).as_str());
 
             return CommandParseResult::Command(command, args);
         }

@@ -1,12 +1,14 @@
-use crate::events::command::Command::Unknown;
+use crate::events::command::Command::{JoinChannel, Unknown};
 
 pub enum Command {
-    Unknown
+    JoinChannel,
+    Unknown,
 }
 
-impl From<String> for Command {
-    fn from(value: String) -> Self {
+impl From<&str> for Command {
+    fn from(value: &str) -> Self {
         match value {
+            "join" => JoinChannel,
             _ => Unknown
         }
     }
