@@ -4,21 +4,17 @@ use serenity::client::bridge::voice::ClientVoiceManager;
 use serenity::model::channel::Message;
 use serenity::model::gateway::Ready;
 use serenity::prelude::*;
+use serenity::voice;
 
 use crate::events::command::Command;
 use crate::events::command_parse_result::CommandParseResult;
 use crate::events::command_parser::CommandParser;
 use crate::events::default_command_parser::DefaultCommandParser;
 use crate::events::messages::Messages;
+use crate::VoiceManager;
 
 pub struct TSVEventHandler {
     command_parser: DefaultCommandParser
-}
-
-struct VoiceManager;
-
-impl TypeMapKey for VoiceManager {
-    type Value = Arc<Mutex<ClientVoiceManager>>;
 }
 
 impl TSVEventHandler {
@@ -60,6 +56,57 @@ impl TSVEventHandler {
         }
     }
 
+    fn leave_channel(&self, ctx: Context, msg: Message) {
+        let guild_id = match ctx.cache.read().guild_channel(msg.channel_id) {
+            Some(channel) => channel.read().guild_id,
+            None => {
+                println!("Guild ID");
+                return;
+            }
+        };
+
+        let manager_lock = ctx.data.read().get::<VoiceManager>().cloned().expect("Expected VoiceManager in ShareMap.");
+        let mut manager = manager_lock.lock();
+        let has_handler = manager.get(guild_id).is_some();
+
+        if has_handler {
+            manager.remove(guild_id);
+            println!("Manager success")
+        } else {
+            println!("Manager error")
+        }
+    }
+
+    fn speak(&self, ctx: Context, msg: Message) {
+        let path = "C:/file.wav";
+
+        let guild_id = match ctx.cache.read().guild_channel(msg.channel_id) {
+            Some(channel) => channel.read().guild_id,
+            None => {
+                println!("Error guild id");
+                return;
+            }
+        };
+
+        let manager_lock = ctx.data.read().get::<VoiceManager>().cloned().expect("Expected VoiceManager in ShareMap.");
+        let mut manager = manager_lock.lock();
+
+        if let Some(handler) = manager.get_mut(guild_id) {
+            let source = match voice::ffmpeg(&path) {
+                Ok(source) => source,
+                Err(why) => {
+                    println!("Source error, {:?}", why);
+
+                    return;
+                }
+            };
+
+            handler.play(source);
+        } else {
+            println!("Handler error")
+        }
+    }
+
     fn unknown_command(&self, ctx: Context, msg: Message) {
         if let Err(why) = msg.channel_id.say(&ctx.http, Messages::UnknownCommand.to_string()) {
             println!("Error sending message: {:?}", why);
@@ -75,6 +122,8 @@ impl EventHandler for TSVEventHandler {
             CommandParseResult::Command(command, _) => {
                 match command {
                     Command::JoinChannel => self.join_channel(ctx, msg),
+                    Command::LeaveChannel => self.leave_channel(ctx, msg),
+                    Command::Play => self.speak(ctx, msg),
                     Command::Unknown => self.unknown_command(ctx, msg)
                 }
             }
