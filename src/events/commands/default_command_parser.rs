@@ -1,7 +1,7 @@
-use crate::events::command::Command;
-use crate::events::command_parse_result::CommandParseResult;
-use crate::events::command_parse_result::CommandParseResult::NoCommand;
-use crate::events::command_parser::CommandParser;
+use crate::events::commands::command::Command;
+use crate::events::commands::command_parse_result::CommandParseResult;
+use crate::events::commands::command_parse_result::CommandParseResult::NoCommand;
+use crate::events::commands::command_parser::CommandParser;
 
 pub struct DefaultCommandParser {
     key_sign: char

@@ -1,4 +1,4 @@
-use crate::events::command::Command::{JoinChannel, LeaveChannel, Play, Unknown};
+use crate::events::commands::command::Command::{JoinChannel, LeaveChannel, Play, Unknown};
 
 pub enum Command {
     JoinChannel,

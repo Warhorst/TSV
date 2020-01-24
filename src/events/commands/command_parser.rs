@@ -1,4 +1,4 @@
-use crate::events::command_parse_result::CommandParseResult;
+use crate::events::commands::command_parse_result::CommandParseResult;
 
 /// Returns a recognized command from a given string.
 pub trait CommandParser {
