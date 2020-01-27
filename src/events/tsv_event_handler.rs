@@ -1,10 +1,6 @@
-use std::sync::Arc;
-
-use serenity::client::bridge::voice::ClientVoiceManager;
-use serenity::model::channel::{Channel, Message};
+use serenity::model::channel::Message;
 use serenity::model::gateway::Ready;
 use serenity::model::id::{ChannelId, GuildId, UserId};
-use serenity::model::user::User;
 use serenity::model::voice::VoiceState;
 use serenity::prelude::*;
 use serenity::voice;
@@ -13,7 +9,7 @@ use crate::events::commands::command::Command;
 use crate::events::commands::command_parse_result::CommandParseResult;
 use crate::events::commands::command_parser::CommandParser;
 use crate::events::commands::default_command_parser::DefaultCommandParser;
-use crate::events::tsv_state::TSVState;
+use crate::events::event_handle_error::EventHandleError;
 use crate::messages::messages::Messages;
 use crate::quotes::quotes::Quotes;
 use crate::VoiceManager;
@@ -25,24 +21,30 @@ pub struct TSVEventHandler {
     command_parser: DefaultCommandParser
 }
 
+type EventHandleResult = Result<(), EventHandleError>;
+
 impl EventHandler for TSVEventHandler {
     fn message(&self, ctx: Context, msg: Message) {
         let command_parse_result = &self.command_parser.parse(&mut msg.content.clone());
 
         match command_parse_result {
             CommandParseResult::Command(command, _) => {
-                match command {
+                let result = match command {
                     Command::JoinChannel => self.join_channel(ctx, msg),
                     Command::LeaveChannel => self.leave_channel(ctx, msg),
-                    Command::Play => self.speak(ctx, msg),
-                    Command::Unknown => self.unknown_command(ctx, msg)
+                    Command::Unknown => self.send_message(Messages::UnknownCommand, ctx, msg)
+                };
+
+                match result {
+                    Err(e) => println!("An error occurred while processing the command: {}", e),
+                    _ => ()
                 }
             }
             CommandParseResult::NoCommand => ()
         }
     }
 
-    fn voice_state_update(&self, ctx: Context, guild: Option<GuildId>, old: Option<VoiceState>, new: VoiceState) {
+    fn voice_state_update(&self, ctx: Context, _guild: Option<GuildId>, old: Option<VoiceState>, new: VoiceState) {
         unsafe {
             let bot_id = match BOT_ID {
                 Some(id) => id,
@@ -68,13 +70,13 @@ impl EventHandler for TSVEventHandler {
             match old {
                 Some(old) => match (old.channel_id, new.channel_id) {
                     (None, None) => println!("strange"),
-                    (None, Some(_)) => self.play_quote(Quotes::UserJoinedYourChannel, ctx, bot_channel_id),
-                    (Some(_), None) => self.play_quote(Quotes::UserLeftYourChannel, ctx, bot_channel_id),
+                    (None, Some(_)) => self.play_quote(Quotes::UserJoinedYourChannel, ctx, bot_channel_id).unwrap(),
+                    (Some(_), None) => self.play_quote(Quotes::UserLeftYourChannel, ctx, bot_channel_id).unwrap(),
                     (Some(old_id), Some(new_id)) => {
                         if new_id == bot_channel_id {
-                            self.play_quote(Quotes::UserJoinedYourChannel, ctx, bot_channel_id)
+                            self.play_quote(Quotes::UserJoinedYourChannel, ctx, bot_channel_id).unwrap()
                         } else if old_id == bot_channel_id {
-                            self.play_quote(Quotes::UserLeftYourChannel, ctx, bot_channel_id)
+                            self.play_quote(Quotes::UserLeftYourChannel, ctx, bot_channel_id).unwrap()
                         }
                     }
                 },
@@ -83,7 +85,7 @@ impl EventHandler for TSVEventHandler {
                         None => println!("undefined"),
                         Some(id) => {
                             if id == bot_channel_id {
-                                self.play_quote(Quotes::UserJoinedYourChannel, ctx, bot_channel_id)
+                                self.play_quote(Quotes::UserJoinedYourChannel, ctx, bot_channel_id).unwrap()
                             } else {
                                 println!("undefined")
                             }
@@ -109,13 +111,10 @@ impl TSVEventHandler {
         }
     }
 
-    fn join_channel(&self, ctx: Context, msg: Message) {
+    fn join_channel(&self, ctx: Context, msg: Message) -> EventHandleResult {
         let guild = match msg.guild(&ctx.cache) {
             Some(guild) => guild,
-            None => {
-                println!("Error guild");
-                return;
-            }
+            None => return Err(EventHandleError::new(String::from("Error retrieving guild id")))
         };
 
         let guild_id = guild.read().id;
@@ -127,10 +126,7 @@ impl TSVEventHandler {
 
         let target_channel = match channel_id {
             Some(channel) => channel,
-            None => {
-                println!("Error channel");
-                return;
-            }
+            None => return Err(EventHandleError::new(String::from("Error retrieving channel id")))
         };
 
         unsafe {
@@ -140,73 +136,60 @@ impl TSVEventHandler {
         let manager_lock = ctx.data.read().get::<VoiceManager>().cloned().expect("Expected VoiceManager in ShareMap.");
         let mut manager = manager_lock.lock();
 
-        if manager.join(guild_id, target_channel).is_some() {
-            println!("Success join")
-        } else {
-            println!("Error join")
+        match manager.join(guild_id, target_channel).is_some() {
+            true => Ok(()),
+            false => Err(EventHandleError::new(String::from("Error while joining channel")))
         }
     }
 
-    fn leave_channel(&self, ctx: Context, msg: Message) {
+    fn leave_channel(&self, ctx: Context, msg: Message) -> EventHandleResult {
         let guild_id = match ctx.cache.read().guild_channel(msg.channel_id) {
             Some(channel) => channel.read().guild_id,
-            None => {
-                println!("Guild ID");
-                return;
-            }
+            None => return Err(EventHandleError::new(String::from("Error retrieving guild id")))
         };
 
         let manager_lock = ctx.data.read().get::<VoiceManager>().cloned().expect("Expected VoiceManager in ShareMap.");
         let mut manager = manager_lock.lock();
         let has_handler = manager.get(guild_id).is_some();
 
-        if has_handler {
-            manager.remove(guild_id);
-            println!("Manager success")
-        } else {
-            println!("Manager error")
+
+        match has_handler {
+            true => {
+                manager.remove(guild_id);
+                Ok(())
+            }
+            false => Err(EventHandleError::new(String::from("Manager has no handler")))
         }
     }
 
-    fn speak(&self, ctx: Context, msg: Message) {
-        self.play_quote(Quotes::UserLeftYourChannel, ctx, msg.channel_id)
-    }
-
-    fn unknown_command(&self, ctx: Context, msg: Message) {
-        self.send_message(Messages::UnknownCommand, ctx, msg);
-    }
-
-    fn send_message(&self, messages: Messages, ctx: Context, msg: Message) {
-        if let Err(why) = msg.channel_id.say(&ctx.http, messages.to_string()) {
-            println!("Error sending message: {:?}", why);
-        }
-    }
-
-    fn play_quote(&self, quote: Quotes, ctx: Context, channel_id: ChannelId) {
+    fn play_quote(&self, quote: Quotes, ctx: Context, channel_id: ChannelId) -> EventHandleResult {
         let guild_id = match ctx.cache.read().guild_channel(channel_id) {
             Some(channel) => channel.read().guild_id,
-            None => {
-                println!("Error guild id");
-                return;
-            }
+            None => return Err(EventHandleError::new(String::from("Error retrieving guild id")))
         };
 
         let manager_lock = ctx.data.read().get::<VoiceManager>().cloned().expect("Expected VoiceManager in ShareMap.");
         let mut manager = manager_lock.lock();
 
-        if let Some(handler) = manager.get_mut(guild_id) {
-            let source = match voice::ffmpeg(&quote.get_path()) {
-                Ok(source) => source,
-                Err(why) => {
-                    println!("Source error, {:?}", why);
+        match manager.get_mut(guild_id) {
+            Some(handler) => {
+                let source = match voice::ffmpeg(&quote.get_path()) {
+                    Ok(source) => source,
+                    Err(why) => return Err(EventHandleError::new_with_cause(String::from("Error getting audio source from path"), why))
+                };
 
-                    return;
-                }
-            };
-
-            handler.play(source);
-        } else {
-            println!("Handler error")
+                handler.play(source);
+                Ok(())
+            }
+            None => Err(EventHandleError::new(String::from("Error getting voice manager handler")))
         }
+    }
+
+    fn send_message(&self, messages: Messages, ctx: Context, msg: Message) -> EventHandleResult {
+        if let Err(why) = msg.channel_id.say(&ctx.http, messages.to_string()) {
+            return Err(EventHandleError::new_with_cause(String::from("Error sending message"), why));
+        }
+
+        Ok(())
     }
 }

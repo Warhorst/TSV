@@ -1,5 +1,4 @@
 use std::env;
-use std::process::Command;
 use std::sync::Arc;
 
 use serenity::Client;
@@ -20,7 +19,6 @@ impl TypeMapKey for VoiceManager {
 }
 
 fn main() {
-    let args: Vec<String> = env::args().collect();
     let token = env::var("TSV_TOKEN").expect("Expected a token in the environment");
 
     let mut client = Client::new(token, TSVEventHandler::new(DefaultCommandParser::new('?'))).expect("Err creating client");
