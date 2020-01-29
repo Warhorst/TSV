@@ -4,6 +4,7 @@ use serenity::model::id::{ChannelId, GuildId, UserId};
 use serenity::model::voice::VoiceState;
 use serenity::prelude::*;
 use serenity::voice;
+use std::sync::Mutex;
 
 use crate::events::commands::command::Command;
 use crate::events::commands::command_parse_result::CommandParseResult;
@@ -14,11 +15,10 @@ use crate::messages::messages::Messages;
 use crate::quotes::quotes::Quotes;
 use crate::VoiceManager;
 
-static mut BOT_ID: Option<UserId> = None;
-static mut BOT_CHANNEL_ID: Option<ChannelId> = None;
-
 pub struct TSVEventHandler {
-    command_parser: DefaultCommandParser
+    command_parser: DefaultCommandParser,
+    bot_id: Mutex<Option<UserId>>,
+    bot_channel_id: Mutex<Option<ChannelId>>,
 }
 
 type EventHandleResult = Result<(), EventHandleError>;
@@ -45,50 +45,48 @@ impl EventHandler for TSVEventHandler {
     }
 
     fn voice_state_update(&self, ctx: Context, _guild: Option<GuildId>, old: Option<VoiceState>, new: VoiceState) {
-        unsafe {
-            let bot_id = match BOT_ID {
-                Some(id) => id,
-                None => {
-                    println!("No user id set!");
-                    return;
-                }
-            };
-
-            let bot_channel_id = match BOT_CHANNEL_ID {
-                Some(id) => id,
-                None => {
-                    println!("No channel id set!");
-                    return;
-                }
-            };
-
-            if new.user_id == bot_id {
-                println!("TSV joined");
+        let bot_id = match *self.bot_id.lock().unwrap() {
+            Some(id) => id,
+            None => {
+                println!("No user id set!");
                 return;
             }
+        };
 
-            match old {
-                Some(old) => match (old.channel_id, new.channel_id) {
-                    (None, None) => println!("strange"),
-                    (None, Some(_)) => self.play_quote(Quotes::UserJoinedYourChannel, ctx, bot_channel_id).unwrap(),
-                    (Some(_), None) => self.play_quote(Quotes::UserLeftYourChannel, ctx, bot_channel_id).unwrap(),
-                    (Some(old_id), Some(new_id)) => {
-                        if new_id == bot_channel_id {
-                            self.play_quote(Quotes::UserJoinedYourChannel, ctx, bot_channel_id).unwrap()
-                        } else if old_id == bot_channel_id {
-                            self.play_quote(Quotes::UserLeftYourChannel, ctx, bot_channel_id).unwrap()
-                        }
+        let bot_channel_id = match *self.bot_channel_id.lock().unwrap() {
+            Some(id) => id,
+            None => {
+                println!("No channel id set!");
+                return;
+            }
+        };
+
+        if new.user_id == bot_id {
+            println!("TSV joined");
+            return;
+        }
+
+        match old {
+            Some(old) => match (old.channel_id, new.channel_id) {
+                (None, None) => println!("strange"),
+                (None, Some(_)) => self.play_quote(Quotes::UserJoinedYourChannel, ctx, bot_channel_id).unwrap(),
+                (Some(_), None) => self.play_quote(Quotes::UserLeftYourChannel, ctx, bot_channel_id).unwrap(),
+                (Some(old_id), Some(new_id)) => {
+                    if new_id == bot_channel_id {
+                        self.play_quote(Quotes::UserJoinedYourChannel, ctx, bot_channel_id).unwrap()
+                    } else if old_id == bot_channel_id {
+                        self.play_quote(Quotes::UserLeftYourChannel, ctx, bot_channel_id).unwrap()
                     }
-                },
-                None => {
-                    match new.channel_id {
-                        None => println!("undefined"),
-                        Some(id) => {
-                            if id == bot_channel_id {
-                                self.play_quote(Quotes::UserJoinedYourChannel, ctx, bot_channel_id).unwrap()
-                            } else {
-                                println!("undefined")
-                            }
+                }
+            },
+            None => {
+                match new.channel_id {
+                    None => println!("undefined"),
+                    Some(id) => {
+                        if id == bot_channel_id {
+                            self.play_quote(Quotes::UserJoinedYourChannel, ctx, bot_channel_id).unwrap()
+                        } else {
+                            println!("undefined")
                         }
                     }
                 }
@@ -97,9 +95,7 @@ impl EventHandler for TSVEventHandler {
     }
 
     fn ready(&self, _: Context, ready: Ready) {
-        unsafe {
-            BOT_ID = Some(ready.user.id)
-        }
+        *self.bot_id.lock().unwrap() = Some(ready.user.id);
         println!("{}", Messages::BotConnected(ready.user.name).to_string());
     }
 }
@@ -107,7 +103,9 @@ impl EventHandler for TSVEventHandler {
 impl TSVEventHandler {
     pub fn new(command_parser: DefaultCommandParser) -> Self {
         TSVEventHandler {
-            command_parser
+            command_parser,
+            bot_id: Mutex::new(None),
+            bot_channel_id: Mutex::new(None),
         }
     }
 
@@ -129,9 +127,7 @@ impl TSVEventHandler {
             None => return Err(EventHandleError::new(String::from("Error retrieving channel id")))
         };
 
-        unsafe {
-            BOT_CHANNEL_ID = Some(target_channel)
-        }
+        *self.bot_channel_id.lock().unwrap() = Some(target_channel);
 
         let manager_lock = ctx.data.read().get::<VoiceManager>().cloned().expect("Expected VoiceManager in ShareMap.");
         let mut manager = manager_lock.lock();
@@ -156,6 +152,7 @@ impl TSVEventHandler {
         match has_handler {
             true => {
                 manager.remove(guild_id);
+                *self.bot_channel_id.lock().unwrap() = None;
                 Ok(())
             }
             false => Err(EventHandleError::new(String::from("Manager has no handler")))
