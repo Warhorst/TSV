@@ -11,6 +11,7 @@ use crate::events::tsv_event_handler::TSVEventHandler;
 pub mod events;
 pub mod messages;
 pub mod quotes;
+pub mod configuration;
 
 struct VoiceManager;
 
