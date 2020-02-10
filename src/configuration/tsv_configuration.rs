@@ -9,5 +9,15 @@ pub struct TSVConfiguration {
 }
 
 impl TSVConfiguration {
+    pub fn get_user_joined_file_uri(&self) -> &String {
+        &self.user_joined_file_uri
+    }
 
+    pub fn get_user_left_file_uri(&self) -> &String {
+        &self.user_left_file_uri
+    }
+
+    pub fn get_user_kicked_file_uri(&self) -> &String {
+        &self.user_kicked_file_uri
+    }
 }

@@ -1,4 +1,4 @@
-use std::fmt::{Formatter, Error, Pointer};
+use std::fmt::Formatter;
 use core::fmt;
 use std::io;
 
