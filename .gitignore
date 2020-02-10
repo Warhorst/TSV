@@ -20,4 +20,4 @@ Cargo.lock
 #intellij
 .idea
 
-voices
+/voices
